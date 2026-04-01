@@ -1,5 +1,5 @@
 .{
-    .name = .codecrafters_shell,
+    .name = .egg_shell,
     .fingerprint = 0xc6b1d97d3a5e8994,
 
     // This is a [Semantic Version](https://semver.org/).
