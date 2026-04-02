@@ -19,6 +19,38 @@ const CommandType = enum {
     unknown,
 };
 
+// A simple fixed-size circular buffer to store command history.
+fn History(comptime capacity: usize) type {
+    return struct {
+        entries: [capacity][]const u8 = [_][]const u8{""} ** capacity,
+        head: usize = 0,
+        len: usize = 0,
+
+        const Self = @This();
+
+        pub fn save_history(self: *Self, allocator: std.mem.Allocator, command: Command) !void {
+            const parts = try allocator.alloc([]const u8, 1 + command.args.len);
+            parts[0] = command.command;
+            @memcpy(parts[1..], command.args);
+            self.push(try std.mem.join(allocator, " ", parts));
+        }
+
+        pub fn push(self: *Self, entry: []const u8) void {
+            self.entries[self.head] = entry;
+            self.head = (self.head + 1) % capacity;
+            if (self.len < capacity) {
+                self.len += 1;
+            }
+        }
+
+        pub fn get(self: *Self, i: usize) ?[]const u8 {
+            if (i >= self.len) return null;
+            const start = (self.head + capacity - self.len) % capacity;
+            return self.entries[(start + i) % capacity];
+        }
+    };
+}
+
 fn parseCommand(allocator: std.mem.Allocator) !Command {
     const fullCommand = try stdin.takeDelimiter('\n');
     var it = std.mem.splitSequence(u8, fullCommand.?, " ");
@@ -71,10 +103,12 @@ pub fn main() !void {
     defer arena.deinit();
 
     const allocator = arena.allocator();
+    var history = History(1024){};
 
     while (true) {
         try stdout.print("$ ", .{});
         const command = try parseCommand(allocator);
+        try history.save_history(allocator, command);
 
         switch (commandType(command.command)) {
             .exit => std.process.exit(0),
