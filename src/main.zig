@@ -1,6 +1,5 @@
 const std = @import("std");
 
-
 var stdout_writer = std.fs.File.stdout().writerStreaming(&.{});
 const stdout = &stdout_writer.interface;
 
@@ -39,7 +38,6 @@ fn parseCommand(allocator: std.mem.Allocator) !Command {
     };
 }
 
-
 fn commandType(cmd: []const u8) CommandType {
     if (std.mem.eql(u8, cmd, "exit")) return .exit;
     if (std.mem.eql(u8, cmd, "echo")) return .echo;
@@ -47,17 +45,15 @@ fn commandType(cmd: []const u8) CommandType {
     return .unknown;
 }
 
-fn checkPath(allocator: std.mem.Allocator, query: []const u8) ![][]const u8 {
-    const env_map = try allocator.create(std.process.EnvMap);
+fn checkPath(env_map: *std.process.EnvMap, allocator: std.mem.Allocator, query: []const u8) ![][]const u8 {
     env_map.* = try std.process.getEnvMap(allocator);
 
     const path = env_map.get("PATH") orelse "";
     var dirs = std.mem.splitSequence(u8, path, ":");
 
-
     var paths: std.ArrayList([]const u8) = .empty;
     defer paths.deinit(allocator);
-    
+
     while (dirs.next()) |dir| {
         const full_path = try std.fs.path.join(allocator, &[_][]const u8{ dir, query });
 
@@ -69,12 +65,12 @@ fn checkPath(allocator: std.mem.Allocator, query: []const u8) ![][]const u8 {
     return paths.toOwnedSlice(allocator);
 }
 
-pub fn main() !void {           
+pub fn main() !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer arena.deinit(); 
+    defer arena.deinit();
 
     const allocator = arena.allocator();
-
+    const env_map = try allocator.create(std.process.EnvMap);
 
     while (true) {
         try stdout.print("$ ", .{});
@@ -93,13 +89,13 @@ pub fn main() !void {
                     continue;
                 }
 
-                const paths = try checkPath(allocator, arg);
+                const paths = try checkPath(env_map, allocator, arg);
 
                 if (paths.len == 0) {
-                    try stdout.print("{s}: not found\n", .{arg}); 
+                    try stdout.print("{s}: not found\n", .{arg});
                 } else {
                     for (paths) |path| {
-                        try stdout.print("{s} is {s}\n", .{arg, path});
+                        try stdout.print("{s} is {s}\n", .{ arg, path });
                     }
                 }
             },
@@ -107,6 +103,5 @@ pub fn main() !void {
                 try stdout.print("{s}: command not found\n", .{command.command});
             },
         }
-
     }
 }
