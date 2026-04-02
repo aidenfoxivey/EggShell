@@ -77,8 +77,7 @@ fn commandType(cmd: []const u8) CommandType {
     return .unknown;
 }
 
-fn checkPath(allocator: std.mem.Allocator, query: []const u8) ![][]const u8 {
-    const env_map = try allocator.create(std.process.EnvMap);
+fn checkPath(env_map: *std.process.EnvMap, allocator: std.mem.Allocator, query: []const u8) ![][]const u8 {
     env_map.* = try std.process.getEnvMap(allocator);
 
     const path = env_map.get("PATH") orelse "";
@@ -104,6 +103,7 @@ pub fn main() !void {
 
     const allocator = arena.allocator();
     var history = History(1024){};
+    const env_map = try allocator.create(std.process.EnvMap);
 
     while (true) {
         try stdout.print("$ ", .{});
@@ -123,7 +123,7 @@ pub fn main() !void {
                     continue;
                 }
 
-                const paths = try checkPath(allocator, arg);
+                const paths = try checkPath(env_map, allocator, arg);
 
                 if (paths.len == 0) {
                     try stdout.print("{s}: not found\n", .{arg});
