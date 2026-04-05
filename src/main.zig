@@ -20,7 +20,6 @@ fn parseCommand(allocator: std.mem.Allocator) ![]const[]const u8 {
     var it = std.mem.splitSequence(u8, fullCommand.?, " ");
 
     var command: std.ArrayList([]const u8) = .empty;
-    defer command.deinit(allocator);
 
     while (it.next()) |arg| {
         try command.append(allocator, arg);
@@ -39,17 +38,17 @@ fn commandType(cmd: []const u8) CommandType {
 // Read "PATH" env varaible and do some pre process to split the
 // files into there own strings. 
 fn readPath(allocator: std.mem.Allocator) ![][]const u8 {
-    const env_map = try allocator.create(std.process.EnvMap);
-    env_map.* = try std.process.getEnvMap(allocator);
+    var env_map = try std.process.getEnvMap(allocator);
+    defer env_map.deinit();
 
     const path = env_map.get("PATH") orelse "";
-    var dirs = std.mem.splitSequence(u8, path, ":");
+    var it = std.mem.splitSequence(u8, path, ":");
 
     var paths: std.ArrayList([]const u8) = .empty;
-    defer paths.deinit(allocator);
 
-    while (dirs.next()) |dir| {
-        try paths.append(allocator, dir);
+    while (it.next()) |p| {
+        const copy = try allocator.dupe(u8, p); 
+        try paths.append(allocator, copy);
     }
 
     return paths.toOwnedSlice(allocator);
@@ -59,7 +58,6 @@ fn readPath(allocator: std.mem.Allocator) ![][]const u8 {
 // it inside a list of paths
 fn findMatchingPath(allocator: std.mem.Allocator, paths: [][]const u8, command: []const u8) ![][]const u8 {
     var matches: std.ArrayList([]const u8) = .empty;
-    defer matches.deinit(allocator);
 
     for (paths) |path| {
         const full_path = try std.fs.path.join(allocator, &[_][]const u8{ path, command });
