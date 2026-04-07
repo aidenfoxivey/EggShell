@@ -12,6 +12,7 @@ const CommandType = enum {
     exit,
     echo,
     type,
+    cd,
     unknown,
 };
 
@@ -32,26 +33,8 @@ fn commandType(cmd: []const u8) CommandType {
     if (std.mem.eql(u8, cmd, "exit")) return .exit;
     if (std.mem.eql(u8, cmd, "echo")) return .echo;
     if (std.mem.eql(u8, cmd, "type")) return .type;
+    if (std.mem.eql(u8, cmd, "cd")) return .cd; 
     return .unknown;
-}
-
-// Read "PATH" env varaible and do some pre process to split the
-// files into there own strings. 
-fn readPath(allocator: std.mem.Allocator) ![][]const u8 {
-    var env_map = try std.process.getEnvMap(allocator);
-    defer env_map.deinit();
-
-    const path = env_map.get("PATH") orelse "";
-    var it = std.mem.splitSequence(u8, path, ":");
-
-    var paths: std.ArrayList([]const u8) = .empty;
-
-    while (it.next()) |p| {
-        const copy = try allocator.dupe(u8, p); 
-        try paths.append(allocator, copy);
-    }
-
-    return paths.toOwnedSlice(allocator);
 }
 
 // given a command check if we can find a matching absolute path for
@@ -100,11 +83,29 @@ pub fn main() !void {
     defer arena.deinit();
 
     const allocator = arena.allocator();
-    const paths = try readPath(allocator);
+    var env_map = try std.process.getEnvMap(allocator);
+    defer env_map.deinit();
+
+    const path_env = env_map.get("PATH") orelse "";
+    var it = std.mem.splitSequence(u8, path_env, ":");
+
+    const home_env = env_map.get("HOME") orelse "";
+
+    var paths: std.ArrayList([]const u8) = .empty;
+    defer paths.deinit(allocator);
+
+    while (it.next()) |p| {
+        const copy = try allocator.dupe(u8, p); 
+        try paths.append(allocator, copy);
+    }
 
     while (true) {
         try stdout.print("$ ", .{});
         const command = try parseCommand(allocator);
+        if (command.len == 1 ) {
+            try stdout.print("character: {d}\n", .{command[0]});
+            continue;
+        }
 
         switch (commandType(command[0])) {
             .exit => std.process.exit(0),
@@ -118,7 +119,7 @@ pub fn main() !void {
                     try stdout.print("{s} is a shell builtin\n", .{arg});
                     continue;
                 }
-                const matches = try findMatchingPath(allocator, paths, arg);
+                const matches = try findMatchingPath(allocator, paths.items, arg);
 
                 if (matches.len == 0) {
                     try stdout.print("{s}: not found\n", .{arg});
@@ -129,8 +130,20 @@ pub fn main() !void {
                 }
 
             },
+            .cd => { 
+                var path = home_env;
+
+                if (command.len > 2) {
+                    path = command[1];
+                }
+
+                var dir = try std.fs.cwd().openDir(path, .{});
+                defer dir.close();
+
+                try dir.setAsCwd();
+            }, 
             .unknown => {
-                const matches = try findMatchingPath(allocator, paths, command[0]);
+                const matches = try findMatchingPath(allocator, paths.items, command[0]);
 
                 if (matches.len == 0) {
                     try stdout.print("{s}: not found\n", .{command[0]});
