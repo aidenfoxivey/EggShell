@@ -144,10 +144,13 @@ pub fn main() !void {
                     path = home_env;
                 }
 
-                var dir = try std.fs.cwd().openDir(path, .{});
-                defer dir.close();
-
-                try dir.setAsCwd();
+                if (std.fs.cwd().openDir(path, .{})) | d | {
+                    var dir = d;
+                    defer dir.close();
+                    try dir.setAsCwd();
+                } else | _ | {
+                    try stdout.print("{s}: No such file or directory\n", .{command[0]}); 
+                } 
             }, 
             .unknown => {
                 const matches = try findMatchingPath(allocator, paths.items, command[0]);
