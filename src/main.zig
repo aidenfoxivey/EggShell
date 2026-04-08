@@ -17,6 +17,8 @@ const CommandType = enum {
 };
 
 fn parseCommand(allocator: std.mem.Allocator) ![]const[]const u8 {
+    try stdout.flush();
+
     const fullCommand = try stdin.takeDelimiter('\n');
     var it = std.mem.splitSequence(u8, fullCommand.?, " ");
 
@@ -37,20 +39,15 @@ fn commandType(cmd: []const u8) CommandType {
     return .unknown;
 }
 
-// given a command check if we can find a matching absolute path for
-// it inside a list of paths
-fn findMatchingPath(allocator: std.mem.Allocator, paths: [][]const u8, command: []const u8) ![][]const u8 {
-    var matches: std.ArrayList([]const u8) = .empty;
-
+// for a command check if it exists in path
+fn findMatchingPath(allocator: std.mem.Allocator, paths: [][]const u8, command: []const u8) !?[]const u8 {
     for (paths) |path| {
         const full_path = try std.fs.path.join(allocator, &[_][]const u8{ path, command });
-
         if (std.fs.accessAbsolute(full_path, .{})) {
-            try matches.append(allocator, full_path);
+            return full_path;
         } else |_| {}
     }
-    
-    return matches.toOwnedSlice(allocator);
+    return null;
 }
 
 
@@ -122,16 +119,12 @@ pub fn main() !void {
                     try stdout.print("{s} is a shell builtin\n", .{arg});
                     continue;
                 }
-                const matches = try findMatchingPath(allocator, paths.items, arg);
 
-                if (matches.len == 0) {
-                    try stdout.print("{s}: not found\n", .{arg});
+                if (try findMatchingPath(allocator, paths.items, arg)) |match| {
+                    try stdout.print("{s} is {s}\n", .{ arg, match });
                 } else {
-                    for (matches) |match| {
-                        try stdout.print("{s} is {s}\n", .{ arg, match });
-                    }
+                    try stdout.print("{s}: not found\n", .{arg});
                 }
-
             },
             .cd => { 
                 var path = home_env;
