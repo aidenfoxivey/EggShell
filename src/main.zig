@@ -1,7 +1,6 @@
 const std = @import("std");
 const signals = @import("signals.zig");
 
-
 var stdout_writer = std.fs.File.stdout().writerStreaming(&.{});
 const stdout = &stdout_writer.interface;
 
@@ -33,7 +32,7 @@ fn commandType(cmd: []const u8) CommandType {
     if (std.mem.eql(u8, cmd, "exit")) return .exit;
     if (std.mem.eql(u8, cmd, "echo")) return .echo;
     if (std.mem.eql(u8, cmd, "type")) return .type;
-    if (std.mem.eql(u8, cmd, "cd")) return .cd; 
+    if (std.mem.eql(u8, cmd, "cd")) return .cd;
     return .unknown;
 }
 
@@ -48,12 +47,11 @@ fn findMatchingPath(allocator: std.mem.Allocator, paths: [][]const u8, command: 
     return null;
 }
 
-
-// Execute an arbritary command in the current terminal window (ex: pwd,..) 
+// Execute an arbritary command in the current terminal window (ex: pwd,..)
 fn execute(command: []const []const u8, allocator: std.mem.Allocator) !u8 {
     var child = std.process.Child.init(command, allocator);
 
-    child.stdin_behavior  = .Inherit;
+    child.stdin_behavior = .Inherit;
     child.stdout_behavior = .Inherit;
     child.stderr_behavior = .Inherit;
 
@@ -63,8 +61,8 @@ fn execute(command: []const []const u8, allocator: std.mem.Allocator) !u8 {
     };
 
     return switch (try child.wait()) {
-        .Exited  => |code| code,
-        .Signal  => |sig|  blk: { 
+        .Exited => |code| code,
+        .Signal => |sig| blk: {
             std.debug.print("killed by signal {d}\n", .{sig});
             break :blk 1;
         },
@@ -92,7 +90,7 @@ pub fn main() !void {
     defer paths.deinit(allocator);
 
     while (it.next()) |p| {
-        const copy = try allocator.dupe(u8, p); 
+        const copy = try allocator.dupe(u8, p);
         try paths.append(allocator, copy);
     }
 
@@ -129,7 +127,7 @@ pub fn main() !void {
                     try stdout.print("{s}: not found\n", .{arg});
                 }
             },
-            .cd => { 
+            .cd => {
                 var path = home_env;
 
                 if (command.len > 1) {
@@ -140,26 +138,23 @@ pub fn main() !void {
                     path = home_env;
                 }
 
-                if (std.fs.cwd().openDir(path, .{})) | d | {
+                if (std.fs.cwd().openDir(path, .{})) |d| {
                     var dir = d;
                     defer dir.close();
                     try dir.setAsCwd();
-                } else | _ | {
-                    try stdout.print("{s}: No such file or directory\n", .{command[1]}); 
-                } 
-            }, 
+                } else |_| {
+                    try stdout.print("{s}: No such file or directory\n", .{command[1]});
+                }
+            },
             .unknown => {
-                if (try findMatchingPath(allocator, paths.items, command[0])) | _ |  {
-
+                if (try findMatchingPath(allocator, paths.items, command[0])) |_| {
                     const response = try execute(command, allocator);
                     if (response != 0) {
-                        try stdout.print("{s}: failed with status code {d}\n", .{command[0], response});
+                        try stdout.print("{s}: failed with status code {d}\n", .{ command[0], response });
                     }
                 } else {
                     try stdout.print("{s}: command not found\n", .{command[0]});
-
                 }
-
             },
         }
     }
