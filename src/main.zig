@@ -1,5 +1,6 @@
 const std = @import("std");
 const signals = @import("signals.zig");
+const parser = @import("parser.zig");
 
 var stdout_writer = std.fs.File.stdout().writerStreaming(&.{});
 const stdout = &stdout_writer.interface;
@@ -15,18 +16,6 @@ const CommandType = enum {
     cd,
     unknown,
 };
-
-fn parseCommand(allocator: std.mem.Allocator) !?[][]const u8 {
-    const fullCommand = try stdin.takeDelimiter('\n') orelse return null;
-    var it = std.mem.splitSequence(u8, fullCommand, " ");
-
-    var command: std.ArrayList([]const u8) = .empty;
-    while (it.next()) |arg| {
-        try command.append(allocator, arg);
-    }
-
-    return @as(?[][]const u8, try command.toOwnedSlice(allocator));
-}
 
 fn commandType(cmd: []const u8) CommandType {
     if (std.mem.eql(u8, cmd, "exit")) return .exit;
@@ -96,66 +85,61 @@ pub fn main() !void {
 
     while (true) {
         try stdout.print("$ ", .{});
-        const command: [][]const u8 = try parseCommand(allocator) orelse {
+        const input = try stdin.takeDelimiter('\n') orelse {
             try stdout.print("\n", .{});
             std.process.exit(0);
         };
-
-        if (command.len == 0) {
-            continue;
-        }
-
-        const trimmed = std.mem.trim(u8, command[0], " \t\n");
-        if (trimmed.len == 0) continue;
-
-        switch (commandType(command[0])) {
-            .exit => std.process.exit(0),
-            .echo => {
-                const args = try std.mem.join(allocator, " ", command[1..]);
-                try stdout.print("{s}\n", .{args});
-            },
-            .type => {
-                const arg = command[1];
-                if (commandType(arg) != .unknown) {
-                    try stdout.print("{s} is a shell builtin\n", .{arg});
-                    continue;
-                }
-
-                if (try findMatchingPath(allocator, paths.items, arg)) |match| {
-                    try stdout.print("{s} is {s}\n", .{ arg, match });
-                } else {
-                    try stdout.print("{s}: not found\n", .{arg});
-                }
-            },
-            .cd => {
-                var path = home_env;
-
-                if (command.len > 1) {
-                    path = command[1];
-                }
-
-                if (std.mem.eql(u8, path, "~")) {
-                    path = home_env;
-                }
-
-                if (std.fs.cwd().openDir(path, .{})) |d| {
-                    var dir = d;
-                    defer dir.close();
-                    try dir.setAsCwd();
-                } else |_| {
-                    try stdout.print("{s}: No such file or directory\n", .{command[1]});
-                }
-            },
-            .unknown => {
-                if (try findMatchingPath(allocator, paths.items, command[0])) |_| {
-                    const response = try execute(command, allocator);
-                    if (response != 0) {
-                        try stdout.print("{s}: failed with status code {d}\n", .{ command[0], response });
+        const commands = try parser.parseCommands(input, allocator);
+        for (commands) | command | {
+            switch (commandType(command[0])) {
+                .exit => std.process.exit(0),
+                .echo => {
+                    const args = try std.mem.join(allocator, " ", command[1..]);
+                    try stdout.print("{s}\n", .{args});
+                },
+                .type => {
+                    const arg = command[1];
+                    if (commandType(arg) != .unknown) {
+                        try stdout.print("{s} is a shell builtin\n", .{arg});
+                        continue;
                     }
-                } else {
-                    try stdout.print("{s}: command not found\n", .{command[0]});
-                }
-            },
+
+                    if (try findMatchingPath(allocator, paths.items, arg)) |match| {
+                        try stdout.print("{s} is {s}\n", .{ arg, match });
+                    } else {
+                        try stdout.print("{s}: not found\n", .{arg});
+                    }
+                },
+                .cd => {
+                    var path = home_env;
+
+                    if (command.len > 1) {
+                        path = command[1];
+                    }
+
+                    if (std.mem.eql(u8, path, "~")) {
+                        path = home_env;
+                    }
+
+                    if (std.fs.cwd().openDir(path, .{})) |d| {
+                        var dir = d;
+                        defer dir.close();
+                        try dir.setAsCwd();
+                    } else |_| {
+                        try stdout.print("{s}: No such file or directory\n", .{command[1]});
+                    }
+                },
+                .unknown => {
+                    if (try findMatchingPath(allocator, paths.items, command[0])) |_| {
+                        const response = try execute(command, allocator);
+                        if (response != 0) {
+                            try stdout.print("{s}: failed with status code {d}\n", .{ command[0], response });
+                        }
+                    } else {
+                        try stdout.print("{s}: command not found\n", .{command[0]});
+                    }
+                },
+            }
         }
     }
 }
