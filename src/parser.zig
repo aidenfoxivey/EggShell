@@ -4,7 +4,8 @@ const testing = std.testing;
 const Token = union(enum) {
     word: []const u8,
     // TODO: implement features as needed
-    // pipe, // |
+    pipe, // |
+    logical_or, // ||
     // logical_and, // &&
 };
 
@@ -35,10 +36,10 @@ fn tokenize(input: []const u8, allocator: std.mem.Allocator) ![]Token {
             },
             '|' => {
                 if (i + 1 < input.len and input[i + 1] == '|') {
-                    try tokens.append(allocator, .{ .word = "||" });
+                    try tokens.append(allocator, Token.logical_or);
                     i += 2;
                 } else {
-                    try tokens.append(allocator, .{ .word = "|" });
+                    try tokens.append(allocator, Token.pipe);
                     i += 1;
                 }
             },
@@ -111,5 +112,5 @@ test "leading and trailing spaces" {
 }
 
 test "pipes and logical operators" {
-    try expectTokens("echo hello | grep h && echo done", &[_]Token{ Token{ .word = "echo" }, Token{ .word = "hello" }, Token{ .word = "|" }, Token{ .word = "grep" }, Token{ .word = "h" }, Token{ .word = "&&" }, Token{ .word = "echo" }, Token{ .word = "done" } }, testing.allocator);
+    try expectTokens("echo hello | grep h && echo done", &[_]Token{ Token{ .word = "echo" }, Token{ .word = "hello" }, Token.pipe, Token{ .word = "grep" }, Token{ .word = "h" }, Token{ .word = "&&" }, Token{ .word = "echo" }, Token{ .word = "done" } }, testing.allocator);
 }
