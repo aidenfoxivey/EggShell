@@ -14,8 +14,8 @@ const Commands = []Command;
 
 const Node = union(enum) {
     // pipe(Node, Node),
-    logical_or: struct { *const Node, *const Node },
-    logical_and: struct { *const Node, *const Node },
+    logical_or: struct { u32, u32 },
+    logical_and: struct { u32, u32 },
     // background(Node),
     command: Command,
 };
@@ -75,6 +75,7 @@ const Parser = struct {
     gpa: std.mem.Allocator,
     tok_i: u64,
     tokens: []Token,
+    nodes: std.ArrayList(Node) = .empty,
 
     fn peek(self: *Parser) Token {
         return self.tokens[self.tok_i];
@@ -86,42 +87,40 @@ const Parser = struct {
         return token;
     }
 
+    fn addNode(self: *Parser, node: Node) !u32 {
+        const idx: u32 = @intCast(self.nodes.items.len);
+        try self.nodes.append(self.gpa, node);
+        return idx;
+    }
+
     // foo || bar -> LogicalOr{ Command{ .{ "foo" } }, Command{ .{ "bar" } } }
-    fn parserOr(self: *Parser) !Node {
-        var left: Node = try self.parseAnd();
+    fn parserOr(self: *Parser) !u32 {
+        var left: u32 = try self.parseAnd();
 
         while (self.tok_i < self.tokens.len and self.peek() == .logical_or) {
             _ = self.consume();
             const right = try self.parseAnd();
-            const left_ptr = try self.gpa.create(Node);
-            const right_ptr = try self.gpa.create(Node);
-            left_ptr.* = left;
-            right_ptr.* = right;
-            left = Node{ .logical_or = .{ left_ptr, right_ptr } };
+            left = try self.addNode(Node{ .logical_or = .{ left, right } });
         }
 
         return left;
     }
 
     // foo && bar -> LogicalAnd{ Command{ .{ "foo" } }, Command{ .{ "bar" } } }
-    fn parseAnd(self: *Parser) !Node {
-        var left: Node = try self.parseCommand();
+    fn parseAnd(self: *Parser) !u32 {
+        var left: u32 = try self.parseCommand();
 
         while (self.tok_i < self.tokens.len and self.peek() == .logical_and) {
             _ = self.consume();
             const right = try self.parseCommand();
-            const left_ptr = try self.gpa.create(Node);
-            const right_ptr = try self.gpa.create(Node);
-            left_ptr.* = left;
-            right_ptr.* = right;
-            left = Node{ .logical_and = .{ left_ptr, right_ptr } };
+            left = try self.addNode(Node{ .logical_and = .{ left, right } });
         }
 
         return left;
     }
 
     // echo --foo --bar "baz" -> Command{ .{ "echo", "--foo", "--bar", "baz" } }
-    fn parseCommand(self: *Parser) !Node {
+    fn parseCommand(self: *Parser) !u32 {
         var argv: std.ArrayList([]const u8) = .empty;
 
         while (self.tok_i < self.tokens.len and self.peek() == .word) {
@@ -129,7 +128,37 @@ const Parser = struct {
             try argv.append(self.gpa, token.word);
         }
 
-        return Node{ .command = try argv.toOwnedSlice(self.gpa) };
+        const n = Node{ .command = try argv.toOwnedSlice(self.gpa) };
+        return self.addNode(n);
+    }
+
+    // For debugging and snap tests.
+    fn printNode(self: *const Parser, writer: anytype, idx: u32) !void {
+        const node = self.nodes.items[idx];
+        switch (node) {
+            .command => |argv| {
+                try writer.writeAll("[");
+                for (argv, 0..) |arg, i| {
+                    if (i > 0) try writer.writeAll(", ");
+                    try writer.writeAll(arg);
+                }
+                try writer.writeAll("]");
+            },
+            .logical_and => |pair| {
+                try writer.writeAll("(and ");
+                try self.printNode(writer, pair[0]);
+                try writer.writeAll(" ");
+                try self.printNode(writer, pair[1]);
+                try writer.writeAll(")");
+            },
+            .logical_or => |pair| {
+                try writer.writeAll("(or ");
+                try self.printNode(writer, pair[0]);
+                try writer.writeAll(" ");
+                try self.printNode(writer, pair[1]);
+                try writer.writeAll(")");
+            },
+        }
     }
 };
 
@@ -151,14 +180,15 @@ const Parser = struct {
 //     return try commands.toOwnedSlice(allocator);
 // }
 
-pub fn parseCommands(input: []const u8, allocator: std.mem.Allocator) !Node {
+pub fn parseCommands(input: []const u8, allocator: std.mem.Allocator) !struct { u32, []Node } {
     const tokens = try lex(input, allocator);
     var parser = Parser{
         .gpa = allocator,
         .tok_i = 0,
         .tokens = tokens,
     };
-    return try parser.parserOr();
+    const root = try parser.parserOr();
+    return .{ root, try parser.nodes.toOwnedSlice(allocator) };
 }
 
 // Testing helper function.
@@ -168,19 +198,18 @@ fn expectTokens(input: []const u8, expected: []const Token) !void {
     try testing.expectEqualDeep(expected, tokens);
 }
 
-fn freeNode(allocator: std.mem.Allocator, node: Node) void {
-    switch (node) {
-        .command => |cmd| allocator.free(cmd),
-        .logical_and, .logical_or => |pair| {
-            freeNode(allocator, pair[0].*);
-            freeNode(allocator, pair[1].*);
-            allocator.destroy(pair[0]);
-            allocator.destroy(pair[1]);
-        },
+// Must free individual command slices and the whole nodes array.
+fn freeNodes(allocator: std.mem.Allocator, nodes: []Node) void {
+    for (nodes) |node| {
+        switch (node) {
+            .command => |cmd| allocator.free(cmd),
+            .logical_and, .logical_or => {},
+        }
     }
+    allocator.free(nodes);
 }
 
-fn expectCommands(input: []const u8, expected: Node) !void {
+fn expectCommands(input: []const u8, expected: []const Node) !void {
     const tokens = try lex(input, testing.allocator);
     defer testing.allocator.free(tokens);
     var parser = Parser{
@@ -188,9 +217,10 @@ fn expectCommands(input: []const u8, expected: Node) !void {
         .tok_i = 0,
         .tokens = tokens,
     };
-    const commands = try parser.parserOr();
-    defer freeNode(testing.allocator, commands);
-    try testing.expectEqualDeep(expected, commands);
+    _ = try parser.parserOr();
+    const nodes = try parser.nodes.toOwnedSlice(testing.allocator);
+    defer freeNodes(testing.allocator, nodes);
+    try testing.expectEqualDeep(expected, nodes);
 }
 
 test "canonical example" {
@@ -253,12 +283,42 @@ test "pipes and logical operators" {
     );
 }
 
-test "parse commands" {
-    try expectCommands(
-        "echo hello && echo bye",
-        Node{ .logical_and = .{
-            &Node{ .command = &.{ "echo", "hello" } },
-            &Node{ .command = &.{ "echo", "bye" } },
-        } },
-    );
+const Snap = @import("snaptest.zig").Snap;
+const snap = Snap.snap;
+
+fn checkTree(input: []const u8, want: Snap) !void {
+    const allocator = testing.allocator;
+    const tokens = try lex(input, allocator);
+    defer allocator.free(tokens);
+    var parser = Parser{
+        .gpa = allocator,
+        .tok_i = 0,
+        .tokens = tokens,
+    };
+    const root = try parser.parserOr();
+    const nodes = try parser.nodes.toOwnedSlice(allocator);
+    defer freeNodes(allocator, nodes);
+    parser.nodes = .{ .items = nodes, .capacity = nodes.len };
+    var buf: std.ArrayList(u8) = .empty;
+    defer buf.deinit(allocator);
+    try parser.printNode(buf.writer(allocator), root);
+    try want.diff(buf.items);
+}
+
+test "snap: simple command" {
+    try checkTree("echo hello world", snap(@src(),
+        \\[echo, hello, world]
+    ));
+}
+
+test "snap: logical and" {
+    try checkTree("echo hello && echo bye", snap(@src(),
+        \\(and [echo, hello] [echo, bye])
+    ));
+}
+
+test "snap: operator precedence" {
+    try checkTree("echo meep || echo hello && echo bye", snap(@src(),
+        \\(or [echo, meep] (and [echo, hello] [echo, bye]))
+    ));
 }
