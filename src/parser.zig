@@ -29,7 +29,7 @@ fn tokenize(input: []const u8, allocator: std.mem.Allocator) ![]Token {
                 while (i < input.len and input[i] != '"') : (i += 1) {}
                 const str = input[start..i];
                 try tokens.append(allocator, .{ .word = str });
-                i += 1; 
+                i += 1;
             },
             else => {
                 const start = i;

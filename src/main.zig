@@ -92,7 +92,7 @@ pub fn main() !void {
             std.process.exit(0);
         };
         const commands = try parser.parseCommands(input, allocator);
-        for (commands) | command | {
+        for (commands) |command| {
             switch (commandType(command[0])) {
                 .exit => std.process.exit(0),
                 .echo => {
@@ -128,7 +128,7 @@ pub fn main() !void {
                         path = home_env;
                     }
 
-                    // This hadnles relative paths like ".." 
+                    // This hadnles relative paths like ".."
                     if (std.fs.cwd().openDir(path, .{})) |d| {
                         var dir = d;
                         defer dir.close();
