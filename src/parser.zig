@@ -7,7 +7,7 @@ const Token = union(enum) {
     // logical_and, // &&
 };
 
-const Command = [][]const u8;
+pub const Command = [][]const u8;
 const Commands = []Command;
 
 fn isSpecialCharacter(c: u8) bool {
