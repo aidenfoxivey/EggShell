@@ -1,8 +1,8 @@
-//! Originally from Tigerbeetle (https://github.com/tigerbeetle/tigerbeetle/)
-//! Copyright (c) 2023 Tigerbeetle
-//! Licensed under the Apache License, Version 2.0
-//! https://www.apache.org/licenses/LICENSE-2.0
-//!
+// Originally from Tigerbeetle (https://github.com/tigerbeetle/tigerbeetle/)
+// Copyright (c) 2023 Tigerbeetle
+// Licensed under the Apache License, Version 2.0
+// https://www.apache.org/licenses/LICENSE-2.0
+//
 //! A tiny pattern/library for testing with expectations ([1], [2]).
 //!
 //! On a high level, this is a replacement for `std.testing.expectEqual` which:

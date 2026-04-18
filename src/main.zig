@@ -1,3 +1,5 @@
+// Copyright 2026 Ryan Eggens
+
 const std = @import("std");
 const signals = @import("signals.zig");
 const parser = @import("parser.zig");
