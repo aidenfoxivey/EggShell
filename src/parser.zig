@@ -297,3 +297,9 @@ test "snap: operator precedence" {
         \\(or [echo, meep] (and [echo, hello] [echo, bye]))
     ));
 }
+
+test "snap: ambiguous symbols" {
+    try checkTree("echo meep || \"||\"", snap(@src(),
+        \\(or [echo, meep] [||])
+    ));
+}
