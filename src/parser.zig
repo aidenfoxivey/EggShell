@@ -94,7 +94,7 @@ const Parser = struct {
     }
 
     // foo || bar -> LogicalOr{ Command{ .{ "foo" } }, Command{ .{ "bar" } } }
-    fn parserOr(self: *Parser) !u32 {
+    fn parseOr(self: *Parser) !u32 {
         var left: u32 = try self.parseAnd();
 
         while (self.tok_i < self.tokens.len and self.peek() == .logical_or) {
