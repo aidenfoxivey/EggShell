@@ -9,8 +9,8 @@ const Token = union(enum) {
     logical_and, // &&
 };
 
-const Command = []const []const u8;
-const Commands = []const Command;
+pub const Command = []const []const u8;
+pub const Commands = []const Command;
 
 const Node = union(enum) {
     // pipe(Node, Node),
