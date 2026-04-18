@@ -192,8 +192,7 @@ fn freeNodes(allocator: std.mem.Allocator, nodes: []Node) void {
 }
 
 fn expectCommands(input: []const u8, expected: []const Node) !void {
-    const foo, const nodes = try parseCommands(input, testing.allocator);
-    _ = foo;
+    _, const nodes = try parseCommands(input, testing.allocator);
     defer freeNodes(testing.allocator, nodes);
     try testing.expectEqualDeep(expected, nodes);
 }
